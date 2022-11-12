@@ -1,0 +1,149 @@
+import { Component, OnInit } from '@angular/core';
+import {ActivatedRoute} from "@angular/router";
+import { Socket } from "ngx-socket-io";
+import { v4 as uuidv4 }  from 'uuid';
+import Peer from 'peerjs';
+
+interface VideoElement {
+  muted: boolean;
+  srcObject: MediaStream;
+  userId: string;
+}
+
+@Component({
+  selector: 'room',
+  templateUrl: './room.component.html',
+  styleUrls: ['./room.component.css']
+})
+export class RoomComponent implements OnInit {
+
+  constructor(private route: ActivatedRoute,private socket: Socket,) { }
+
+  currentUserId:string = uuidv4();
+  videos: VideoElement[] = [];
+  openCamera:boolean=true;
+  openMic:boolean=false;
+  shareScreen:boolean=false;
+  roomId:String=this.route.snapshot.paramMap.get('roomId') as String;
+
+
+  ngOnInit() {
+
+    const myPeer = new Peer(this.currentUserId, {
+      host: '/',
+      port: 3001,
+    });
+
+
+      myPeer.on('open', userId => {
+        this.socket.emit('join-room',this.roomId, userId);
+      });
+
+
+    navigator.mediaDevices.getUserMedia({
+      audio: true,
+      video: true,
+    })
+      .then((stream: any) => {
+          this.addMyVideo(stream);
+
+        myPeer.on('call', (call) => {
+          console.log('receiving call...', call);
+
+          call.answer(stream);
+
+          call.on('stream', (otherUserVideoStream: MediaStream) => {
+            console.log('receiving other stream', otherUserVideoStream);
+                  console.log("wsaaaaaaaaaaaaaal !!!!")
+            this.addOtherUserVideo(call.metadata.userId, otherUserVideoStream);
+          });
+
+          call.on('error', (err) => {
+            console.error(err);
+          })
+        });
+
+        this.socket.on('user-connected', (userId: string) => {
+          console.log('Receiving user-connected event', `Calling ${userId}`);
+
+          // Let some time for new peers to be able to answer
+          setTimeout(() => {
+            const call = myPeer.call(userId, stream, {
+              metadata: { userId: this.currentUserId },
+            });
+
+            call.on('stream', (otherUserVideoStream: MediaStream) => {
+              console.log('receiving other user stream after his connection');
+              console.log("mmmmmmmmmmmmmmmmmmmmmmmmmmm")
+              this.addOtherUserVideo(userId, otherUserVideoStream);
+            });
+
+            call.on('close', () => {
+              this.videos = this.videos.filter((video) => video.userId !== userId);
+            });
+
+          }, 1000);
+        });
+      });
+
+    this.socket.on('user-disconnected', (userId: string) => {
+      this.videos = this.videos.filter(video => video.userId !== userId);
+    });
+  }
+
+  addMyVideo(stream: MediaStream) {
+    this.videos.push({
+      muted: true,
+      srcObject: stream,
+      userId: this.currentUserId,
+    });
+  }
+
+  addOtherUserVideo(userId: string, stream: MediaStream) {
+    const alreadyExisting = this.videos.some(video => video.userId === userId);
+    if (alreadyExisting) {
+      console.log(this.videos, userId);
+      return;
+    }
+    this.videos.push({
+      muted: false,
+      srcObject: stream,
+      userId,
+    });
+  }
+
+  handleLoadMetaData(event: Event) {
+    (event.target as HTMLVideoElement).play();
+  }
+
+  async handleMicClick()
+  {
+   this.openMic=!this.openMic;
+  }
+
+  async handleCameraClick(){
+    this.openCamera=!this.openCamera;
+    await navigator.mediaDevices.getUserMedia({audio:true,video:this.openCamera})
+    .then((stream: any) => {
+       this.videos[0].srcObject=stream;
+    })
+  }
+
+  async handleShareScreenClick()
+  {
+  const mediaDevices = navigator.mediaDevices as any;
+ await mediaDevices.getDisplayMedia()
+      .then((stream: MediaStream) => {
+        stream.getVideoTracks()[0].onended = async ()=>{
+
+          await navigator.mediaDevices.getUserMedia({audio:this.openMic,video:this.openCamera})
+          .then((stream: any) => {
+             this.videos[0].srcObject=stream;
+          })
+
+        };
+       this.videos[0].srcObject=stream;
+    })
+  }
+
+}

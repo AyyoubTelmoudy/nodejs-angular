@@ -1,0 +1,39 @@
+<div class="videos-grid">
+  <div *ngFor="let video of streamVideos" style="position: relative;">
+    <video  [muted]="video.userId==currentUserId||video.muted" [srcObject]="video.srcObject" (loadedmetadata)="handleLoadMetaData($event)"></video>
+     <div class="control-bar" *ngIf="video.userId==currentUserId" >
+
+      <button *ngIf="openCamera" type="button" (click)="handleCloseCamera()">
+        <i class="fa-solid fa-video"></i>
+      </button>
+      <button *ngIf="!openCamera" type="button" (click)="handleOpenCamera()">
+        <i class="fa-sharp fa-solid fa-video-slash"></i>
+      </button>
+
+      <div  style="flex: 1.5;"></div>
+
+        <button *ngIf="!shareScreen" type="button" (click)="handleShareScreen()">
+           <i class="fa-solid fa-arrow-up"></i>
+        </button>
+         <button *ngIf="shareScreen" type="button" id="stopi-screen-sharing" (click)="handleStopSharingScreen()">
+           <i class="fa-solid fa-arrow-down"></i>
+        </button>
+       <div style="flex: 1.5;"></div>
+       <button *ngIf="video.muted"  type="button" (click)="handleCloseMic()">
+           <i class="fa-solid fa-microphone-slash"></i>
+      </button>
+      <button *ngIf="!video.muted" type="button" (click)="handleOpenMic()">
+           <i class="fa-solid fa-microphone"></i>
+      </button>
+
+     </div>
+     <div class="control-bar" *ngIf="currentUserId!=video.userId" >
+         <div  *ngIf="!video.muted">
+          <button type="button"><i class="fa-solid fa-microphone"></i></button>
+        </div>
+         <div *ngIf="video.muted">
+          <button type="button"><i class="fa-solid fa-microphone-slash"></i></button>
+         </div>
+     </div>
+  </div>
+</div>

@@ -1,0 +1,225 @@
+import { Component, OnInit } from '@angular/core';
+import {ActivatedRoute} from "@angular/router";
+import { Socket } from "ngx-socket-io";
+import { v4 as uuidv4 }  from 'uuid';
+import Peer from 'peerjs';
+
+interface VideoElement {
+  muted: boolean;
+  srcObject: MediaStream;
+  userId: string;
+}
+
+@Component({
+  selector: 'room',
+  styleUrls: ['./room.component.css']
+})
+export class RoomComponent implements OnInit {
+
+  constructor(private route: ActivatedRoute,private socket: Socket,) { }
+
+  currentUserId:string = uuidv4();
+  videos: VideoElement[] = [];
+  openCamera:boolean=true;
+  openMic:boolean=false;
+  shareScreen:boolean=false;
+  hideCameraButton:boolean=false;
+  roomId:String=this.route.snapshot.paramMap.get('roomId') as String;
+
+
+  ngOnInit() {
+
+
+
+    this.socket.on('user-change-stream',(roomId :any, userId:any,userStream:MediaStream)=>{
+      const call = myPeer.call(userId, this.videos[0].srcObject, {
+        metadata: { userId: this.currentUserId },
+      });
+
+      call.on('stream', (userStream: MediaStream) => {
+        for (let index in this.videos) {
+          if(this.videos[index].userId=== userId)
+          {
+            this.videos[index].srcObject=userStream
+          }
+        }
+      });
+
+      call.on('close', () => {
+        this.videos = this.videos.filter((video) => video.userId !== userId);
+      });
+    })
+
+
+
+
+
+
+
+
+
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        noiseSuppression:true
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        sampleRate: 44100
+      }
+    })
+      .then((stream: any) => {
+          this.addMyVideo(stream);
+
+        myPeer.on('call', (call) => {
+          call.answer(this.videos[0].srcObject);
+
+          call.on('stream', (otherUserVideoStream: MediaStream) => {
+            this.addOtherUserVideo(call.metadata.userId, otherUserVideoStream);
+          });
+
+          call.on('error', (err) => {
+            console.error(err);
+          })
+        });
+
+        this.socket.on('user-connected', (userId: string) => {
+          console.log('Receiving user-connected event', `Calling ${userId}`);
+
+          // Let some time for new peers to be able to answer
+          setTimeout(() => {
+            const call = myPeer.call(userId, this.videos[0].srcObject, {
+              metadata: { userId: this.currentUserId },
+            });
+
+            call.on('stream', (otherUserVideoStream: MediaStream) => {
+              console.log('receiving other user stream after his connection');
+              this.addOtherUserVideo(userId, otherUserVideoStream);
+            });
+
+            call.on('close', () => {
+              this.videos = this.videos.filter((video) => video.userId !== userId);
+            });
+
+          }, 1000);
+        });
+      });
+
+    this.socket.on('user-disconnected', (userId: string) => {
+      this.videos = this.videos.filter(video => video.userId !== userId);
+    });
+  }
+
+
+
+
+
+
+
+
+
+  async handleCloseCamera()
+  {
+    if(this.openCamera)
+    {
+      this.openCamera=false;
+      await navigator.mediaDevices.getUserMedia({audio:true,video:this.openCamera})
+      .then((stream: MediaStream) => {
+         this.videos[0].srcObject=stream;
+         this.socket.emit('change-stream',this.roomId, this.currentUserId,this.videos[0].srcObject);
+      })
+    }
+  }
+
+  async handleOpenCamera()
+  {
+    if(!this.openCamera)
+    {
+      this.openCamera=true;
+      await navigator.mediaDevices.getUserMedia({audio:true,video:this.openCamera})
+      .then((stream: MediaStream) => {
+         this.videos[0].srcObject=stream;
+         this.socket.emit('change-stream',this.roomId, this.currentUserId,this.videos[0].srcObject);
+      })
+    }
+  }
+
+
+async handleStopSharingScreen(){
+if(this.shareScreen)
+{
+  await navigator.mediaDevices.getUserMedia({audio:true,video:this.openCamera})
+  .then((stream: any) => {
+
+    this.videos[0].srcObject.getVideoTracks()
+    .forEach(function(track) {
+      track.stop();
+   });
+
+     this.videos[0].srcObject=stream;
+     this.hideCameraButton=false;
+     this.shareScreen=false;
+  })}
+  }
+
+  async handleShareScreen()
+  {
+  if(!this.shareScreen)
+  {
+    const mediaDevices = navigator.mediaDevices as any;
+    await mediaDevices.getDisplayMedia()
+      .then((stream: MediaStream) => {
+        stream.getVideoTracks()[0].addEventListener('ended', () => {
+          navigator.mediaDevices.getUserMedia({audio:true,video:this.openCamera})
+          .then((stream)=>{
+            this.videos[0].srcObject=stream;
+            this.hideCameraButton=false;
+            this.shareScreen=false;
+          })
+        });
+
+       this.videos[0].srcObject=stream;
+       this.hideCameraButton=true;
+       this.shareScreen=true;
+    })
+  }
+  }
+
+
+
+}
+
+
+
+<div  style="flex: 1.5;"></div>
+<button *ngIf="!shareScreen" type="button" (click)="handleShareScreen()">
+ <i class="fa-solid fa-arrow-up"></i>
+</button>
+<button *ngIf="shareScreen" type="button" id="stopi-screen-sharing" (click)="handleStopSharingScreen()">
+ <i class="fa-solid fa-arrow-down"></i>
+</button>
+<div style="flex: 1.5;"></div>
+
+
+<div class="videos-grid">
+  <div *ngFor="let video of streamVideos" style="position: relative;">
+    <video  [muted]="openMic&&video.userId==currentUserId? 'muted':''" [srcObject]="video.srcObject" (loadedmetadata)="handleLoadMetaData($event)"></video>
+     <div class="control-bar" *ngIf="video.userId==currentUserId" >
+
+      <button *ngIf="openCamera" type="button" (click)="handleCloseCamera()">
+        <i class="fa-solid fa-video"></i>
+      </button>
+      <button *ngIf="!openCamera" type="button" (click)="handleOpenCamera()">
+        <i class="fa-sharp fa-solid fa-video-slash"></i>
+      </button>
+
+      <button *ngIf="openMic"  type="button" (click)="handleCloseMic()">
+        <i class="fa-solid fa-microphone-slash"></i>
+      </button>
+      <button *ngIf="!openMic" type="button" (click)="handleOpenMic()">
+        <i class="fa-solid fa-microphone"></i>
+      </button>
+
+     </div>
+  </div>
+</div>

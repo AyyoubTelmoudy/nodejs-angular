@@ -1,0 +1,51 @@
+.videos-grid{
+  display: grid;
+  grid-template-columns: repeat(2,minmax(100px,1fr));
+  grid-gap: 10px;
+  padding: 10px;
+}
+
+video{
+border: 5px solid rgb(80, 80, 255);
+border-radius:5%;
+}
+
+.control-bar{
+width: 100%;
+display: flex;
+position: absolute;
+bottom: 3%;
+}
+
+
+
+.control-bar button{
+color: white;
+border: none;
+border-radius: 10%;
+background-color: rgb(80, 80, 255);
+flex: 1;
+justify-content: space-between;
+}
+
+@media (min-width:600px) {
+.videos-grid{
+  grid-template-columns:repeat(3,minmax(100px,1fr));
+}
+}
+
+@media (min-width:900px) {
+.videos-grid{
+  grid-template-columns:repeat(4,minmax(100px,1fr));
+}
+}
+
+@media (min-width:1200px) {
+.videos-grid{
+  grid-template-columns:repeat(5,minmax(100px,1fr));
+}
+}
+
+video{
+width: 100%;
+}

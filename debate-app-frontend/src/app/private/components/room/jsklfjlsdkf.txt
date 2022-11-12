@@ -1,0 +1,103 @@
+import { Component, OnInit } from '@angular/core';
+import {ActivatedRoute} from "@angular/router";
+import { Socket } from "ngx-socket-io";
+import { v4 as uuidv4 }  from 'uuid';
+import Peer from 'peerjs';
+import { StreamVideo } from '../../models/stream-video';
+
+
+@Component({
+  selector: 'room',
+  templateUrl: './room.component.html',
+  styleUrls: ['./room.component.css']
+})
+export class RoomComponent implements OnInit {
+
+  constructor(private route: ActivatedRoute,private socket: Socket) { }
+
+  currentUserId:string = uuidv4();
+  streamVideos: StreamVideo[] = [];
+  roomId:String=this.route.snapshot.paramMap.get('roomId') as String;
+  peer:Peer=new Peer(this.currentUserId,{ host: '/',port: 3001,});
+  openCamera:boolean=true;
+  openMic:boolean=true;
+
+
+
+  ngOnInit()
+  {
+
+    this.peer.on('open', userId =>
+    {this.socket.emit('join-room',this.roomId, userId);});
+    navigator.mediaDevices.getUserMedia({audio:true,video:this.openCamera})
+         .then((stream:MediaStream)=>{
+              this.streamVideos.push({muted:this.openMic,srcObject:stream,userId:this.currentUserId});
+              this.peer.on('call', (call) => {
+                alert(call.metadata.userId)
+                alert(this.currentUserId)
+
+                  call.answer(this.streamVideos[0].srcObject);
+                  call.on('stream', (otherUserVideoStream: MediaStream) => {
+                        this.addNewVideoStream(call.metadata, otherUserVideoStream);
+                       });
+
+              });
+
+              this.socket.on('user-connected', (userId: string) => {
+                setTimeout(() => {
+                  const call = this.peer.call(userId, this.streamVideos[0].srcObject, {
+                    metadata: { userId: this.currentUserId},
+                  });
+                  call.on('stream', (otherUserVideoStream: MediaStream) => {
+                    this.addNewVideoStream(userId, otherUserVideoStream);
+                  });
+                  call.on('close', () => {
+                    this.streamVideos = this.streamVideos.filter((video) => video.userId !== userId);
+                  });
+                }, 1000);
+              });
+
+              this.socket.on('user-change-stream',(userId:string,userStream:MediaStream)=>{
+                          const call = this.peer.call(userId, this.streamVideos[0].srcObject, {
+                            metadata: { userId: this.currentUserId },
+                          });
+                          call.on('stream', (userStream: MediaStream) => {
+                            for (let index in this.streamVideos) {
+                              if(this.streamVideos[index].userId=== userId)
+                              {
+                                this.streamVideos[index].srcObject=userStream
+                              }
+                            }
+                          });
+                          call.on('close', () => {
+                            this.streamVideos= this.streamVideos.filter((video) => video.userId !== userId);
+                          });
+
+              })
+
+              this.socket.on('user-disconnected', (userId: string) => {
+                this.streamVideos= this.streamVideos.filter(video => video.userId !== userId);
+              });
+
+         });
+  }
+
+    addNewVideoStream(metadata:any, stream: MediaStream) {
+    const alreadyExisting = this.streamVideos.some(video => video.userId === metadata.userId);
+    if (alreadyExisting)
+      return;
+    this.streamVideos.push({
+      muted: metadata.audio,
+      srcObject: stream,
+      userId :metadata.userId,
+    });
+  }
+
+  handleLoadMetaData(event: Event)
+  {
+    (event.target as HTMLVideoElement).play();
+  }
+
+
+
+}
